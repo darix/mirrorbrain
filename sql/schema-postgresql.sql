@@ -24,17 +24,21 @@ CREATE TABLE "version" (
 -- --------------------------------------------------------
 
 
-CREATE TABLE "filearr" (
+CREATE TABLE "file" (
         "id" serial NOT NULL PRIMARY KEY,
-        "path" varchar(512) UNIQUE NOT NULL,
-        "mirrors" smallint[]
+        "path" varchar(512) UNIQUE NOT NULL
 );
+
+
+CREATE TABLE mirror (fileid INTEGER NOT NULL REFERENCES file(id),
+                     mirrorid INTEGER NOT NULL REFERENCES server(id),
+                     PRIMARY KEY (fileid, mirrorid));
 
 -- --------------------------------------------------------
 
 
 CREATE TABLE "hash" (
-        "file_id" INTEGER REFERENCES filearr PRIMARY KEY,
+        "file_id" INTEGER REFERENCES file(id) PRIMARY KEY,
         "mtime" INTEGER NOT NULL,
         "size" BIGINT NOT NULL,
         "md5"    BYTEA NOT NULL,
@@ -144,112 +148,80 @@ CREATE TABLE "region" (
 
 
 
-
 -- add a mirror to the list of mirrors where a file was seen
 CREATE OR REPLACE FUNCTION mirr_add_byid(arg_serverid integer, arg_fileid integer) RETURNS integer AS $$
-DECLARE
-    arr smallint[];
 BEGIN
-    SELECT INTO arr mirrors FROM filearr WHERE id = arg_fileid;
-    IF arg_serverid = ANY(arr) THEN
-        RAISE DEBUG 'already there -- nothing to do';
-        RETURN 0;
-    ELSE
-        arr := array_append(arr, arg_serverid::smallint);
-        RAISE DEBUG 'arr: %', arr;
-        update filearr set mirrors = arr where id = arg_fileid;
-        return 1;
-    END IF;
+        INSERT INTO mirror (mirrorid, fileid) VALUES (arg_serverid, arg_fileid);
+        RETURN 1;
+EXCEPTION
+        WHEN unique_violation THEN
+                RAISE DEBUG 'already there -- nothing to do';
+                RETURN 0;
 END;
 $$ LANGUAGE plpgsql;
 
 
 -- remove a mirror from the list of mirrors where a file was seen
 CREATE OR REPLACE FUNCTION mirr_del_byid(arg_serverid integer, arg_fileid integer) RETURNS integer AS $$
-DECLARE
-    arr smallint[];
 BEGIN
-    SELECT INTO arr mirrors FROM filearr WHERE id = arg_fileid;
+        DELETE FROM mirror WHERE fileid = arg_fileid AND mirrorid = arg_serverid;
+        IF FOUND THEN
+                RETURN 1;
+        END IF;
 
-    IF NOT arg_serverid = ANY(arr) THEN
-        -- it's not there - nothing to do
-        RAISE DEBUG 'not there -- nothing to do';
         RETURN 0;
-    ELSE
-        arr := ARRAY(
-                    SELECT arr[i] 
-                    FROM generate_series(array_lower(arr, 1), array_upper(arr, 1)) 
-                    AS i 
-                    WHERE arr[i] <> arg_serverid
-                );
-        RAISE DEBUG 'arr: %', arr;
-        -- update the array in the table
-        -- if arr is empty, we could actually remove the row instead, thus deleting the file
-        UPDATE filearr 
-            SET mirrors = arr WHERE id = arg_fileid;
-        RETURN 1;
-    END IF;
 END;
 $$ LANGUAGE plpgsql;
 
 
 -- check whether a given mirror is known to have a file (id)
 CREATE OR REPLACE FUNCTION mirr_hasfile_byid(arg_serverid integer, arg_fileid integer) RETURNS boolean AS $$
-DECLARE
-    result integer;
 BEGIN
-    SELECT INTO result 1 FROM filearr WHERE id = arg_fileid AND arg_serverid = ANY(mirrors);
-    IF result > 0 THEN
-        RETURN true;
-    END IF;
-    RETURN false;
+        PERFORM * FROM mirror WHERE mirrorid = arg_serverid AND fileid = arg_fileid;
+        RETURN FOUND;
 END;
 $$ LANGUAGE plpgsql;
 
+
 -- check whether a given mirror is known to have a file (name)
 CREATE OR REPLACE FUNCTION mirr_hasfile_byname(arg_serverid integer, arg_path text) RETURNS boolean AS $$
-DECLARE
-    result integer;
 BEGIN
-    SELECT INTO result 1 FROM filearr WHERE path = arg_path AND arg_serverid = ANY(mirrors);
-    IF result > 0 THEN
-        RETURN true;
-    END IF;
-    RETURN false;
+    PERFORM fileid FROM file INNER JOIN mirror ON (file.id = mirror.fileid) 
+            WHERE path = arg_path AND mirrorid = arg_serverid;
+    RETURN FOUND;
 END;
 $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION mirr_add_bypath(arg_serverid integer, arg_path text) RETURNS integer AS $$
 DECLARE
-    fileid integer;
-    arr smallint[];
+    _fileid integer;
 BEGIN
-    SELECT INTO fileid, arr
-        id, mirrors FROM filearr WHERE path = arg_path;
-
-    -- There are three cases to handle, and we want to handle each of them
-    -- with the minimal effort.
-    -- In any case, we return a file id in the end.
-    IF arg_serverid = ANY(arr) THEN
+    SELECT INTO _fieldid FROM file INNER JOIN mirror ON (file.id = mirror.fileid)
+        WHERE path = arg_path AND mirrorid = arg_serverid;
+    IF FOUND THEN
         RAISE DEBUG 'nothing to do';
-    ELSIF fileid IS NULL THEN
-        RAISE DEBUG 'creating entry for new file.';
-        INSERT INTO filearr (path, mirrors) VALUES (arg_path, ARRAY[arg_serverid]);
-        fileid := currval('filearr_id_seq');
-    ELSE
-        RAISE DEBUG 'update existing file entry (id: %)', fileid;
-        arr := array_append(arr, arg_serverid::smallint);
-        update filearr set mirrors = arr where id = fileid;
+        RETURN _fieldid;
     END IF;
 
-    RETURN fileid;
+    SELECT INTO _fileid FROM file WHERE path = arg_path;
+    IF NOT FOUND THEN
+        -- new file case?
+        RAISE DEBUG 'creating entry for new file.';
+        INSERT INTO file (path) VALUES (arg_path) RETURNING id INTO _fileid;
+    ELSE
+        RAISE DEBUG 'update existing file entry (id: %)', _fileid;
+    END IF;
+
+    INSERT INTO mirror (fileid, mirrorid) VALUES (_fileid, arg_serverid);
+    RETURN _fileid;
+
 EXCEPTION
     WHEN unique_violation THEN
         RAISE NOTICE 'file % was just inserted by somebody else', arg_path;
         -- just update it by calling ourselves again
-        SELECT into fileid mirr_add_bypath(arg_serverid, arg_path);
-        RETURN fileid;
+        SELECT into _fileid mirr_add_bypath(arg_serverid, arg_path);
+        RETURN _fileid;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -274,11 +246,19 @@ $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION mirr_get_nfiles(integer) RETURNS bigint AS '
-    SELECT count(*) FROM filearr WHERE $1 = ANY(mirrors)
+    SELECT count(file.id)
+        FROM file
+        INNER JOIN mirror ON (file.id = mirror.fileid)
+    WHERE mirrorid = $1
 ' LANGUAGE SQL;
 
+
 CREATE OR REPLACE FUNCTION mirr_get_nfiles(text) RETURNS bigint AS '
-    SELECT count(*) FROM filearr WHERE (SELECT id from server where identifier = $1) = ANY(mirrors)
+    SELECT count(file.id)
+        FROM file
+        INNER JOIN mirror ON (file.id = mirror.fileid)
+        INNER JOIN server ON (mirror.mirrorid = server.id)
+        WHERE identifier = $1
 ' LANGUAGE SQL;
 
 

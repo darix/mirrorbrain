@@ -14,7 +14,8 @@ def has_file(conn, path, mirror_id):
     else:
         oprtr = '='
 
-    query = "SELECT path FROM filearr WHERE path %s '%s' AND %s = ANY(mirrors)" \
+    query = """SELECT path FROM file INNER JOIN mirror ON fileid = mirror.id 
+               WHERE path %s '%s' AND mirrorid = %s""" \
                   % (oprtr, path, mirror_id)
     result = conn.Server._connection.queryAll(query)
 
@@ -60,11 +61,11 @@ def ls(conn, path):
 
     query = 'SELECT server.identifier, server.country, server.region, \
                        server.score, server.baseurl, server.enabled, \
-                       server.status_baseurl, filearr.path \
-                FROM filearr \
-                LEFT JOIN server \
-                ON server.id = ANY(filearr.mirrors) \
-                WHERE filearr.path %s \'%s\' \
+                       server.status_baseurl, file.path \
+                FROM file \
+                LEFT JOIN mirror ON (file.id = mirror.fileid) \
+                LEFT JOIN server ON (server.id = mirror.serverid) \
+                WHERE file.path %s \'%s\' \
                 ORDER BY server.region, server.country, server.score DESC' \
                   % (oprtr, path)
     rows = conn.Server._connection.queryAll(query)
@@ -97,7 +98,7 @@ def add(conn, path, mirror):
 
 
 def rm(conn, path, mirror):
-    query = """SELECT mirr_del_byid(%d, (SELECT id FROM filearr WHERE path='%s'))""" \
+    query = """SELECT mirr_del_byid(%d, (SELECT id FROM file WHERE path='%s'))""" \
                    % (mirror.id, path)
     conn.Server._connection.queryAll(query)
 
@@ -106,12 +107,12 @@ def dir_ls(conn, segments = 1, mirror=None):
     """Show distinct directory names, looking only on the first path components.
 
     Manually, this could be done in the following way:
-    select distinct array_to_string((string_to_array(path, '/'))[0:2], '/') from filearr
+    select distinct array_to_string((string_to_array(path, '/'))[0:2], '/') from file
     """
 
     query = """SELECT DISTINCT array_to_string(
                                    (string_to_array(path, '/'))[0:%s],
-                                   '/') FROM filearr""" % segments
+                                   '/') FROM file""" % segments
 
     if mirror:
         query += ' where %s = any(mirrors)' % mirror.id
@@ -126,16 +127,20 @@ def dir_show_mirrors(conn, path, missing=False):
     written for.
     """
 
-    query = """select distinct(mirrors) from filearr where path like '%s%%'""" % path
-    result = conn.Server._connection.queryAll(query)
+    #
+    # FIXME: queryAll - what does that return? mirror_ids[] can be fetched
+    # directly from query.
+    # 
+
+    query = """SELECT mirrorid FROM file INNER JOIN mirror ON (file.id = mirror.fileid)
+               WHERE where path like '%s%%'
+               GROUP BY mirrorid
+            """ % path
+    mirror_ids = conn.Server._connection.queryAll(query)
 
     mirror_ids = []
     for i in result:
-        i = i[0]
-        for mirror_id in i:
-            mirror_id = str(mirror_id)
-            if mirror_id not in mirror_ids:
-                mirror_ids.append(mirror_id)
+        mirror_ids.append(i[0])
 
     if not mirror_ids:
         return []
@@ -153,11 +158,11 @@ def dir_filelist(conn, path):
     
     The returned filenames include their path."""
 
-    query = """SELECT filearr.path, hash.file_id
-                   FROM filearr 
+    query = """SELECT file.path, hash.file_id
+                   FROM file 
                LEFT JOIN hash 
-                   ON hash.file_id = filearr.id 
-               WHERE filearr.dirname = '%s/'""" % util.pgsql_regexp_esc(path)
+                   ON hash.file_id = file.id 
+               WHERE file.dirname = '%s/'""" % util.pgsql_regexp_esc(path)
 
     result = conn.Server._connection.queryAll(query)
     return result
@@ -189,12 +194,12 @@ def hashes_list_delete(conn, idlist):
 
 def hashes_dir_delete(conn, base):
     """Deletes all rows from the hash table which correspond to paths in the
-    filearr table starting with 'base'.
+    file table starting with 'base'.
     This means we recursively delete hashes below a given directory."""
 
     query = """DELETE FROM hash 
                WHERE file_id IN (
-                   SELECT filearr.id FROM filearr 
+                   SELECT file.id FROM file 
                    WHERE path LIKE '%s/%%'
                )""" % base
     conn.Filearr._connection.query(query)

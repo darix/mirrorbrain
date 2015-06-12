@@ -135,25 +135,23 @@
 #define DBD_LLD_FMT "lld"
 #endif
 
-#define DEFAULT_QUERY "SELECT id, identifier, region, country, " \
+#define DEFAULT_QUERY "SELECT server.id, identifier, region, country, " \
                              "lat, lng, " \
                              "asn, prefix, score, baseurl, " \
                              "region_only, country_only, " \
                              "as_only, prefix_only, " \
                              "other_countries, file_maxsize " \
                       "FROM server " \
-                      "WHERE id::smallint = any(" \
-                          "(SELECT mirrors " \
-                           "FROM filearr " \
-                           "WHERE path = %s)::smallint[]) " \
+                             "INNER JOIN mirror ON (mirror.mirrorid=server.id) " \
+                             "INNER JOIN file ON (file.id=mirror.fileid) " \
+                      "WHERE path = %s " \
                       "AND enabled AND status_baseurl AND score > 0"
 #define DEFAULT_QUERY_HASH "SELECT file_id, md5hex, sha1hex, sha256hex, " \
                                   "sha1piecesize, sha1pieceshex, btihhex, pgp, " \
                                   "zblocksize, zhashlens, zsumshex " \
                            "FROM hexhash " \
-                           "WHERE file_id = (SELECT id " \
-                                            "FROM filearr " \
-                                            "WHERE path = %s) " \
+                           "INNER JOIN file ON(file_id=file.id) " \
+                           "WHERE path = %s " \
                            "AND size = %" DBD_LLD_FMT " " \
                            "AND mtime = %" DBD_LLD_FMT " " \
                            "LIMIT 1"

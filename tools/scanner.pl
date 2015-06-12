@@ -277,13 +277,13 @@ for my $row (@scan_list) {
 
   if(length $start_dir) {
     $sql = "CREATE TEMPORARY TABLE temp1 AS 
-            SELECT id FROM filearr 
+            SELECT id FROM file INNER JOIN mirror ON (file.id=mirror.fileid)
             WHERE path LIKE '$start_dir/%' 
-                  AND $row->{id} = ANY(mirrors)";
+                  AND mirrorid = $row->{id}";
   } else {
     $sql = "CREATE TEMPORARY TABLE temp1 AS 
-            SELECT id FROM filearr 
-            WHERE $row->{id} = ANY(mirrors)";
+            SELECT id FROM mirror 
+            WHERE mirrorid = $row->{id}";
   }
   print "$sql\n" if $sqlverbose;
   $dbh->do($sql) or die "$sql: ".$DBI::errstr;
@@ -307,7 +307,7 @@ for my $row (@scan_list) {
     $dbh->commit or die "$DBI::errstr";
   }
 
-  #$sql = "SELECT COUNT(*) FROM filearr WHERE $row->{id} = ANY(mirrors)";
+  #$sql = "SELECT COUNT(*) FROM mirror WHERE mirrorid = $row->{id}";
   #print "$sql\n" if $sqlverbose;
 
 
@@ -347,7 +347,7 @@ for my $row (@scan_list) {
   print localtime(time) . " $row->{identifier}: files to be purged: $purge_file_count\n" if $verbose > 0;
 
 
-  $sql = "SELECT COUNT(*) FROM filearr WHERE $row->{id} = ANY(mirrors);";
+  $sql = "SELECT COUNT(mirrorid) FROM mirror WHERE mirrorid = $row->{id};";
   print "$sql\n" if $sqlverbose;
 
   if(length $start_dir) {

@@ -17,7 +17,9 @@ def delete_mirror(conn, mirror):
     except IndexError:
         raise mb.mberr.MirrorNotFoundError(mirror)
 
-    query = """SELECT mirr_del_byid(%d, id) FROM filearr WHERE %s = ANY(mirrors)""" \
+    query = """SELECT mirr_del_byid(%d, id)
+               FROM file INNER JOIN mirror ON (file.id = mirror.fileid)
+               WHERE mirrorid = %s""" \
                    % (m.id, m.id)
     conn.Server._connection.queryAll(query)
 

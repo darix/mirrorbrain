@@ -4,9 +4,10 @@ def stale(conn, quietness):
 
     n_file_total = conn.Filearr.select().count()
 
-    query = """SELECT count(*) FROM filearr 
-                   LEFT OUTER JOIN hash ON filearr.id = hash.file_id 
-               WHERE mirrors = '{}' AND hash.file_id IS NULL"""
+    query = """SELECT count(*) FROM file 
+                   LEFT OUTER JOIN hash ON file.id = hash.file_id 
+                   LEFT JOIN mirror ON file.id = mirror.fileid
+               WHERE mirrorid IS NULL AND hash.file_id IS NULL"""
     n_file_stale = conn.Filearr._connection.queryAll(query)[0]
 
 
@@ -20,11 +21,12 @@ def vacuum(conn, quietness):
 
     if quietness < 1:
         print 'Deleting stale files...'
-    query = """DELETE FROM filearr 
+    query = """DELETE FROM file 
                WHERE id IN (
-                   SELECT filearr.id FROM filearr 
-                   LEFT OUTER JOIN hash ON filearr.id = hash.file_id 
-                   WHERE mirrors = '{}' AND hash.file_id IS NULL
+                   SELECT file.id FROM file
+                   LEFT OUTER JOIN hash ON file.id = hash.file_id 
+                   LEFT OUTER JOIN mirror ON file.id = mirror.fileid
+                   WHERE mirror.mirrorid IS NULL AND hash.file_id IS NULL
                )"""
     conn.Filearr._connection.query(query)
 

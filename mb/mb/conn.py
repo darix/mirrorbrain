@@ -265,7 +265,7 @@ class Conn:
             print >>sys.stderr, '>>> A database table for hashes does not exit. Creating...'
             query = """
             CREATE TABLE "hash" (
-                    "file_id" INTEGER REFERENCES filearr PRIMARY KEY,
+                    "file_id" INTEGER REFERENCES file(id) PRIMARY KEY,
                     "mtime" INTEGER NOT NULL,
                     "size" BIGINT NOT NULL,
                     "md5"    BYTEA NOT NULL,
@@ -308,11 +308,14 @@ class Conn:
             # added 2.12.x -> 2.13.0
             query = """
             CREATE OR REPLACE FUNCTION mirr_get_nfiles(integer) RETURNS bigint AS '
-                SELECT count(*) FROM filearr WHERE $1 = ANY(mirrors)
+                SELECT count(*) FROM mirror WHERE mirror = $1
             ' LANGUAGE 'SQL';
 
             CREATE OR REPLACE FUNCTION mirr_get_nfiles(text) RETURNS bigint AS '
-                SELECT count(*) FROM filearr WHERE (SELECT id from server where identifier = $1) = ANY(mirrors)
+                SELECT count(*) 
+                   FROM mirror 
+                      INNER JOIN server ON (mirrorid=server.id) 
+                   WHERE identifier = $1
             ' LANGUAGE 'SQL';
             """
             Filearr._connection.query(query)

@@ -120,12 +120,11 @@ class Hasheable:
             self.hb.zsyncpieceshex = []
 
 
-        c.execute("SELECT id FROM filearr WHERE path = %s LIMIT 1",
-                  [self.src_rel])
-        res_filearr = c.fetchone()
-        if res_filearr:
+        c.execute("SELECT id FROM file WHERE path = %s", [self.src_rel])
+        res_file = c.fetchone()
+        if res_file:
             # file already present in the file array table. Is it also known in the hash table?
-            file_id = res_filearr[0]
+            file_id = res_file[0]
             c.execute("SELECT file_id, mtime, size FROM hash WHERE file_id = %s LIMIT 1",
                       [file_id])
             res_hash = c.fetchone()
@@ -147,10 +146,8 @@ class Hasheable:
                 return
 
             c.execute("BEGIN")
-            if not res_filearr: 
-                c.execute("INSERT INTO filearr (path, mirrors) VALUES (%s, '{}')",
-                          [self.src_rel])
-                c.execute("SELECT currval('filearr_id_seq')")
+            if not res_file: 
+                c.execute("INSERT INTO file (path) VALUES (%s) RETURNING id", [self.src_rel])
                 file_id =  c.fetchone()[0]
 
             c.execute("""INSERT INTO hash (file_id, mtime, size, md5, 
