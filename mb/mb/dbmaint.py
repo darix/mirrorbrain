@@ -2,13 +2,13 @@
 def stale(conn, quietness):
     """show statistics about stale files in the database"""
 
-    n_file_total = conn.Filearr.select().count()
+    n_file_total = conn.File.select().count()
 
     query = """SELECT count(*) FROM file 
                    LEFT OUTER JOIN hash ON file.id = hash.file_id 
                    LEFT JOIN mirror ON file.id = mirror.fileid
                WHERE mirrorid IS NULL AND hash.file_id IS NULL"""
-    n_file_stale = conn.Filearr._connection.queryAll(query)[0]
+    n_file_stale = conn.File._connection.queryAll(query)[0]
 
 
     if quietness < 1:
@@ -28,7 +28,7 @@ def vacuum(conn, quietness):
                    LEFT OUTER JOIN mirror ON file.id = mirror.fileid
                    WHERE mirror.mirrorid IS NULL AND hash.file_id IS NULL
                )"""
-    conn.Filearr._connection.query(query)
+    conn.File._connection.query(query)
 
     if quietness < 1:
         print 'Done.'
@@ -43,7 +43,7 @@ def stats(conn):
                WHERE relkind IN ('r', 'i') 
                       AND relname ~ '^.*(file|server|pfx|temp1|stats|hash).*' 
                ORDER BY 1"""
-    rows = conn.Filearr._connection.queryAll(query)
+    rows = conn.File._connection.queryAll(query)
 
     print 'Size(MB) Relation'
     total = 0

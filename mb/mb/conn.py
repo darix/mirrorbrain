@@ -209,11 +209,11 @@ class Conn:
                 fromDatabase = True
         self.Server = Server
 
-        class Filearr(SQLObject):
+        class File(SQLObject):
             """the file table"""
             class sqlmeta:
                 fromDatabase = True
-        self.Filearr = Filearr
+        self.File = File
 
         class Marker(SQLObject):
             """the marker table"""
@@ -280,7 +280,7 @@ class Conn:
                     "zsums" BYTEA NOT NULL
             );
             """
-            Filearr._connection.query(query)
+            File._connection.query(query)
             query = """
             CREATE VIEW hexhash AS 
               SELECT file_id, mtime, size, 
@@ -302,7 +302,7 @@ class Conn:
                      encode(zsums, 'hex') AS zsumshex
               FROM hash;
             """
-            Filearr._connection.query(query)
+            File._connection.query(query)
             # XXX and another thing that should not happen here, but in an
             # "upgrade" module (that can be called at will)
             # added 2.12.x -> 2.13.0
@@ -318,7 +318,7 @@ class Conn:
                    WHERE identifier = $1
             ' LANGUAGE 'SQL';
             """
-            Filearr._connection.query(query)
+            File._connection.query(query)
             print >>sys.stderr, '>>> Done.'
             print >>sys.stderr 
             # now try again

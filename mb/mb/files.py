@@ -179,7 +179,7 @@ def hashes_list_delete(conn, idlist):
                DELETE FROM hash 
                WHERE file_id IN ( %s ); 
                COMMIT""" % ', '.join([ str(i) for i in idlist])
-    conn.Filearr._connection.query(query)
+    conn.File._connection.query(query)
 
 
 #def hashdir_add(conn, d):
@@ -188,7 +188,7 @@ def hashes_list_delete(conn, idlist):
 #    query = """INSERT INTO hashdir (path)
 #               VALUES ('%s')""" % d
 #    try:
-#        conn.Filearr._connection.query(query)
+#        conn.File._connection.query(query)
 #    except:
 #        pass
 
@@ -202,4 +202,4 @@ def hashes_dir_delete(conn, base):
                    SELECT file.id FROM file 
                    WHERE path LIKE '%s/%%'
                )""" % base
-    conn.Filearr._connection.query(query)
+    conn.File._connection.query(query)
